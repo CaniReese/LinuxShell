@@ -218,3 +218,41 @@ void execute_command(char **args, int background) {
         perror("Fork failed");
     }
 }
+
+
+// Shell Ana Döngüsü
+int main() {
+    char input[MAX_CMD_LEN];
+    char *args[MAX_ARGS];
+
+    signal(SIGCHLD, sigchld_handler); // Arkaplan süreçleri kontrol et
+
+    while (1) {
+        display_prompt();
+
+        if (!fgets(input, MAX_CMD_LEN, stdin)) {
+            break;
+        }
+
+        // Arkaplan Komut Kontrolü
+        if (strchr(input, '&')) {
+            handle_background_commands(input);
+        }
+        // Noktalı Virgül Kontrolü
+        else if (strchr(input, ';')) {
+            handle_semicolon(input);
+        }
+        // Pipe Kontrolü
+        else if (strchr(input, '|')) {
+            handle_pipe(input);
+        } 
+        // Tekli Komut Kontrolü
+        else {
+            parse_command(input, args);
+            execute_command(args, 0);
+        }
+    }
+
+    return 0;
+}
+
