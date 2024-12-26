@@ -64,3 +64,104 @@ void handle_redirection(char **args) {
     }
 }
 
+// Pipe (Boru) ile Komut Zinciri
+void handle_pipe(char *input) {
+    char *commands[10]; // Maksimum 10 pipe zinciri
+    int num_pipes = 0;
+
+    // Komutları Pipe ile böl ve boşlukları temizle
+    char *token = strtok(input, "|");
+    while (token != NULL) {
+        while (*token == ' ') token++; // Başlangıçtaki boşlukları kaldır
+        commands[num_pipes++] = token;
+        token = strtok(NULL, "|");
+    }
+
+    // Eksik komut kontrolü
+    if (num_pipes < 2 || commands[1] == NULL || strlen(commands[1]) == 0) {
+        fprintf(stderr, "Pipe error: Missing second command after '|'\n");
+        return;
+    }
+
+    // DEBUG: Ayrıştırılan komutları kontrol et
+//    printf("DEBUG: num_pipes = %d, commands[0] = %s, commands[1] = %s\n", 
+//           num_pipes, 
+//           commands[0], 
+//           num_pipes > 1 ? commands[1] : "NULL");
+
+    int pipefds[2 * (num_pipes - 1)];
+
+    // Pipe oluştur
+    for (int i = 0; i < num_pipes - 1; i++) {
+        if (pipe(pipefds + i * 2) < 0) {
+            perror("Pipe failed");
+            return;
+        }
+    }
+
+    for (int i = 0; i < num_pipes; i++) {
+        pid_t pid = fork();
+        if (pid == 0) { // Çocuk süreç
+            if (i != 0) {
+                dup2(pipefds[(i - 1) * 2], STDIN_FILENO);
+            }
+            if (i != num_pipes - 1) {
+                dup2(pipefds[i * 2 + 1], STDOUT_FILENO);
+            }
+
+            for (int j = 0; j < 2 * (num_pipes - 1); j++) {
+                close(pipefds[j]);
+            }
+
+            char *args[MAX_ARGS];
+            parse_command(commands[i], args);
+            handle_redirection(args); // Yönlendirme kontrolü
+            execvp(args[0], args);
+            perror("Command execution failed");
+            exit(EXIT_FAILURE);
+        }
+    }
+
+    for (int i = 0; i < 2 * (num_pipes - 1); i++) {
+        close(pipefds[i]);
+    }
+
+    for (int i = 0; i < num_pipes; i++) {
+        wait(NULL);
+    }
+}
+
+
+
+void handle_semicolon(char *input) {
+    char *commands[10]; // Maksimum 10 komut
+    int num_commands = 0;
+
+    // Noktalı virgül ile komutları böl
+    char *token = strtok(input, ";");
+    while (token != NULL) {
+        while (*token == ' ') token++; // Başlangıçtaki boşlukları temizle
+        commands[num_commands++] = token;
+        token = strtok(NULL, ";");
+    }
+
+    for (int i = 0; i < num_commands; i++) {
+        char *args[MAX_ARGS];
+        int background = 0;
+
+        // Arkaplan komutlarını kontrol et
+        if (strchr(commands[i], '&')) {
+            background = 1;
+            *strchr(commands[i], '&') = '\0';
+        }
+
+        // Komutları ayrıştır
+        parse_command(commands[i], args);
+
+        if (args[0] == NULL) {
+            continue;
+        }
+
+        execute_command(args, background);
+    }
+}
