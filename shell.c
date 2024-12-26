@@ -165,3 +165,56 @@ void handle_semicolon(char *input) {
         execute_command(args, background);
     }
 }
+
+void handle_background_commands(char *input) {
+    char *commands[10]; // Maksimum 10 arkaplan komut
+    int num_commands = 0;
+
+    // Arkaplan komutlarını ayır
+    char *token = strtok(input, "&");
+    while (token != NULL) {
+        while (*token == ' ') token++; // Boşlukları temizle
+        commands[num_commands++] = token;
+        token = strtok(NULL, "&");
+    }
+
+    for (int i = 0; i < num_commands; i++) {
+        char *args[MAX_ARGS];
+        parse_command(commands[i], args);
+
+        if (args[0] == NULL) {
+            continue;
+        }
+
+        execute_command(args, 1); // Arkaplanda çalıştır
+    }
+}
+
+
+// Tekli komut çalıştırma
+void execute_command(char **args, int background) {
+    if (args[0] == NULL) {
+        return;
+    }
+
+    if (strcmp(args[0], "quit") == 0) {
+        printf("Exiting shell...\n");
+        exit(0);
+    }
+
+    pid_t pid = fork();
+    if (pid == 0) { // Çocuk süreç
+        handle_redirection(args); // Yönlendirme kontrolü
+        execvp(args[0], args);
+        perror("Error executing command");
+        exit(EXIT_FAILURE);
+    } else if (pid > 0) { // Ana süreç
+        if (!background) {
+            waitpid(pid, NULL, 0); // Ön plan süreci bekle
+        } else {
+            printf("[PID %d] running in background\n", pid);
+        }
+    } else {
+        perror("Fork failed");
+    }
+}
